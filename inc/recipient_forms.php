@@ -110,7 +110,7 @@ function gwapi_render_recipient_field($row, WP_Post $recipient)
     $field_html = apply_filters('gwapi_recipient_field_'.$row['type'].'_html', '', $recipient, $row);
     $field_html = apply_filters('gwapi_recipient_field_html', $field_html, $recipient, $row);
 
-    echo strtr($base_html, [
+    return strtr($base_html, [
         ':label' => $row['name'],
         ':description' => $row['description'],
         ':field' => $field_html
@@ -140,7 +140,7 @@ add_filter('gwapi_recipient_field_text_html', function($html, WP_Post $recipient
     $required = isset($field['required']) && $field['required'];
     $disabled = isset($field['disabled']) && $field['disabled'] ? ' disabled' : '';
 
-    return '<input'.$disabled.' type="text" name="gwapi['.strtolower($field['field_id']).']" value="'.esc_attr($recipient_value).'" '.($required?'required':'').' />';
+    return '<input'.$disabled.' type="text" name="gwapi['.strtolower($field['field_id']).']" value="'.esc_attr($recipient_value).'" '.($required?'required':'').' placeholder="Name"/>';
 }, 1, 3);
 
 /**
@@ -176,7 +176,7 @@ add_filter('gwapi_recipient_field_digits_html', function($html, WP_Post $recipie
     $required = isset($field['required']) && $field['required'];
     $disabled = isset($field['disabled']) && $field['disabled'] ? ' disabled' : '';
 
-    return '<input'.$disabled.' type="number" step="1" min="0" name="gwapi['.strtolower($field['field_id']).']" value="'.esc_attr($recipient_value).'" '.($required?'required':'').' />';
+    return '<input'.$disabled.' type="number" step="1" min="0" name="gwapi['.strtolower($field['field_id']).']" value="'.esc_attr($recipient_value).'" '.($required?'required':'').' placeholder="Handynummer"/>';
 }, 1, 3);
 
 /**
@@ -341,7 +341,7 @@ add_filter('gwapi_recipient_field_mobile_cc_html', function($html, WP_Post $reci
 
 add_filter('gwapi_recipient_value', function($value, $recipient, $field) {
     if ($field['field_id'] == 'NAME') {
-        return get_the_title($recipient->ID);
+        return '';
     }
     return $value;
 }, 10, 3);

@@ -5,17 +5,20 @@
  */
 function _gwapi_shortcode_render_recipient_form($atts, $recipient=null)
 {
+    $return_fields = "";
     // render the form fields
     $fields = get_option('gwapi_recipient_fields');
     foreach($fields as $row) {
         if (isset($row['type']) && $row['type'] == 'hidden') continue;
-        gwapi_render_recipient_field($row, $recipient ? : new WP_Post(new stdClass()));
+        $return_fields .= gwapi_render_recipient_field($row, $recipient ? : new WP_Post(new stdClass()));
     }
 
     // edit groups?
     if (isset($atts['edit-groups']) && $atts['edit-groups']) {
         gwapi_render_recipient_editable_groups($atts, $recipient);
     }
+
+    return $return_fields;
 }
 
 /**
@@ -67,9 +70,13 @@ function _gwapi_shortcode_render_captcha($atts)
 
 function _gwapi_shortcode_render_submit($action_text)
 {
-    echo '<button type="submit" class="btn btn-primary">';
-    echo $action_text;
-    echo '</button>';
+    $signup_button = "";
+
+    $signup_button .= '<button type="submit" class="btn btn-primary">';
+    $signup_button .= $action_text;
+    $signup_button .= '</button>';
+
+    return $signup_button;
 }
 
 /**
@@ -104,13 +111,15 @@ function _gwapi_shortcode_handle_signup($atts)
 {
     $action_text = "";
     $action_note = "";
+    $extra_param = "";
+    $hidden_param = "";
 
     $action = isset($_POST['gwapi_action']) ? $_POST['gwapi_action'] : 'signup';
     switch($action) {
         // STEP 1: ENTER MOBILE
         case 'signup':
-            echo '<input type="hidden" name="gwapi_action" value="signup_confirm_sms" />';
-            _gwapi_shortcode_render_recipient_form($atts);
+            $hidden_param .= '<input type="hidden" name="gwapi_action" value="signup_confirm_sms" />';
+            $extra_param = _gwapi_shortcode_render_recipient_form($atts);
             $action_text = __('Sign up', 'gwapi');
             $action_note = __('Note: A code will be sent by SMS to the mobile number specified, to confirm the ownership.', 'gwapi');
             break;
@@ -130,13 +139,14 @@ function _gwapi_shortcode_handle_signup($atts)
             set_transient('gwapi_confirmation_code_'.$msisdn, $code, 60*60*4);
 
             $status = gwapi_send_sms( strtr(__('Your confirmation code: %code%', 'gwapi'), ['%code%' => substr($code,0,3)." ".substr($code,3,3)]), $msisdn, '', 'DISPLAY' );
+
             if (is_wp_error($status)) return new WP_Error('sms_fail', __('Sending of the verification code by SMS failed. Please try again later or contact the website owner.', 'gwapi'));
 
             // show the form
-            echo '<input type="hidden" name="gwapi[cc]" value="'.esc_attr($_POST['gwapi']['cc']).'">';
-            echo '<input type="hidden" name="gwapi[number]" value="'.esc_attr($_POST['gwapi']['number']).'">';
-            echo '<input type="hidden" name="gwapi_action" value="signup_confirm_save">';
-            gwapi_render_recipient_field([
+            $hidden_param .= '<input type="hidden" name="gwapi[cc]" value="'.esc_attr($_POST['gwapi']['cc']).'">';
+            $hidden_param .= '<input type="hidden" name="gwapi[number]" value="'.esc_attr($_POST['gwapi']['number']).'">';
+            $hidden_param .= '<input type="hidden" name="gwapi_action" value="signup_confirm_save">';
+            $extra_param = gwapi_render_recipient_field([
                 'type' => 'digits',
                 'name' => __('Confirmation code', 'gwapi'),
                 'field_id' => 'sms_verify',
@@ -162,7 +172,7 @@ function _gwapi_shortcode_handle_signup($atts)
             gwapi_save_recipient($ID, get_transient('gwapi_subscriber_'.$msisdn), true);
             _gwapi_save_recipient_groups($ID, get_transient('gwapi_subscriber_'.$msisdn), $atts);
 
-            echo '<div class="alert alert-success">'.__('You have been succesfully subscribed. Thank you signing up.', 'gwapi').'</div>';
+            $hidden_param .= '<div class="alert alert-success">'.__('You have been succesfully subscribed. Thank you signing up.', 'gwapi').'</div>';
 
             // invalidate the sms code transient and subscriber post data
             delete_transient('gwapi_confirmation_code_'.$msisdn);
@@ -171,7 +181,7 @@ function _gwapi_shortcode_handle_signup($atts)
             break;
     }
 
-    return [ $action_text, $action_note ];
+    return [ $action_text, $action_note, $extra_param, $hidden_param ];
 }
 
 /**
@@ -462,32 +472,36 @@ function _gwapi_shortcode_handle_send_sms($atts)
     return [ $action_text, $action_note ];
 }
 
-add_shortcode('gwapi', function($atts) {
+add_shortcode('gwapi', 'gwapi_shortcode_function' );
+
+function gwapi_shortcode_function($atts) {
+
+    $shortcode = '';
 
     // validate: action
     $valid_actions = ['signup', 'update', 'unsubscribe', 'send_sms'];
     $action = isset($atts['action']) && $atts['action'] ? $atts['action'] : null;
     if (!in_array($action, $valid_actions)) {
-        echo '<div class="alert alert-warning">'.strtr(__('Invalid action specified for GatewayAPI shortcode. Must be one of: %actions%.','gwapi'), ['%actions%' => implode(", ", $valid_actions)]).'</div>';
+        $shortcode .= '<div class="alert alert-warning">'.strtr(__('Invalid action specified for GatewayAPI shortcode. Must be one of: %actions%.','gwapi'), ['%actions%' => implode(", ", $valid_actions)]).'</div>';
         return;
     }
 
     // validate: recaptcha
     if (isset($atts['recaptcha']) && $atts['recaptcha']) {
         if (!get_option('gwapi_recaptcha_site_key') || !get_option('gwapi_recaptcha_secret_key')) {
-            echo '<div class="alert alert-warning">'.__('You must enter Site key and Secret key from Google reCAPTCHA on the GatewayAPI Settings-page, or disable CAPTCHA on your GatewayAPI Form shortcode.', 'gwapi').'</div>';
+            $shortcode .= '<div class="alert alert-warning">'.__('You must enter Site key and Secret key from Google reCAPTCHA on the GatewayAPI Settings-page, or disable CAPTCHA on your GatewayAPI Form shortcode.', 'gwapi').'</div>';
             return;
         }
     }
 
     // start form
-    echo '<form method="post" action="'.get_permalink().'" class="gwapi-form">';
+    $shortcode .= '<form method="post" action="'.get_permalink().'" class="gwapi-form">';
 
     // received a captcha? validate!
     if (isset($_POST['g-recaptcha-response'])) {
         $verify = _gwapi_shortcode_verify_captcha();
         if (is_wp_error($verify)) {
-            echo '<div class="alert alert-warning">'.$verify->get_error_message().'</div>';
+            $shortcode .= '<div class="alert alert-warning">'.$verify->get_error_message().'</div>';
             return;
         }
     }
@@ -523,10 +537,10 @@ add_shortcode('gwapi', function($atts) {
             break;
     }
 
-    if (!is_wp_error($action_res)) list($action_text, $action_note) = $action_res;
+    if (!is_wp_error($action_res)) list($action_text, $action_note, $extra_param, $hidden_param) = $action_res;
     else {
-        echo '<div class="alert alert-warning">'.$action_res->get_error_message().'</div>';
-        return;
+        $shortcode .= '<div class="alert alert-warning">'.$action_res->get_error_message().'</div></form>';
+        return $shortcode;
     }
 
     // render the recaptcha and submit button
@@ -535,12 +549,18 @@ add_shortcode('gwapi', function($atts) {
             _gwapi_shortcode_render_captcha($atts);
         }
 
-        _gwapi_shortcode_render_submit($action_text);
+        $shortcode .= $hidden_param;
+        $shortcode .= $extra_param;
+        $shortcode .= _gwapi_shortcode_render_submit($action_text);
         if ($action_note) {
-            echo '<div class="help-block description">'.$action_note.'</div>';
+            $shortcode .= '<div class="help-block description">'.$action_note.'</div>';
         }
+    }else{
+        $shortcode .= $hidden_param;
     }
 
     // end form
-    echo '</form>';
-});
+    $shortcode .= '</form>';
+
+    return $shortcode;
+}
